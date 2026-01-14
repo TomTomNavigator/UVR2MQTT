@@ -4,13 +4,15 @@ UVR2MQTT - read the DL Bus from Technische Alternative and publish to MQTT via a
 In my case a a UVR610, read more here: https://thomasheinz.net/enerboxx-uvr610-mittels-dl-bus-und-esp8266-auslesen-und-via-mqtt-daten-weitergeben/
 
 
-Added a web config (configure via Wifi, 192.168.4.1) and also added SSL/TLS MQTT option. I did not write this, just changed and adapted code to my use case, see resources for more. 
+--> Added a web config (configure via Wifi, 192.168.4.1) and also SSL/TLS MQTT option. 
+
+I changed and adapted existing code to my use case, see resources for more. 
 
 <img width="526" height="722" alt="image" src="https://github.com/user-attachments/assets/e50ed897-d3c9-4d3f-968a-3449aa54661c" />
 
 
 Just compile it and install it to your ESP8266. I am using Pin **GPIO2 = D4**.
-Compiled *.bin ready to download in the Release section. 
+Compiled *.bin ready to download in the Release section. Install with https://esphome.github.io/esp-web-tools/ (for example) 
 
 ## Resources: 
  * https://github.com/Buster01/UVR2MQTT
