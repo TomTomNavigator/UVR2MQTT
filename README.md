@@ -12,7 +12,11 @@ I changed and adapted existing code to my use case, see resources for more.
 
 ## Installation
 Just compile it and install it to your ESP8266. I am using Pin **GPIO2 = D4**.
-Compiled *.bin ready to download in the Release section. Install with https://esphome.github.io/esp-web-tools/ (for example) 
+Compiled *.bin ready to download in the Release section. 
+
+Install with https://esphome.github.io/esp-web-tools/ (for example) 
+
+
 When the ESP8266 starts it will create a Setup Access Point - "UVR2MQTT-Setup" - where you can configure your settings. 
 
 ## Resources: 
