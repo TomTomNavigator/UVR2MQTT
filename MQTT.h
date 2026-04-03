@@ -10,7 +10,9 @@ boolean mqtt_connect(void) {
   // The new `manageConnections` function in the main .ino file ensures WiFi is
   // connected before this is called. We just need to attempt the connection.
   // The connect function is blocking, but will timeout after 15 seconds (as set in setup).
-  return mqtt_client->connect(config.ssid, config.mqtt_user, config.mqtt_pass);
+  char clientId[20];
+  snprintf(clientId, sizeof(clientId), "UVR2MQTT-%06X", ESP.getChipId());
+  return mqtt_client->connect(clientId, config.mqtt_user, config.mqtt_pass);
 }
 
 void mqtt_daten_senden() {

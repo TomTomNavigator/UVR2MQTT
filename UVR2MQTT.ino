@@ -1,8 +1,6 @@
-const byte dataPin = 2; 
+const byte dataPin = 2;
 const byte interrupt = 2;
-unsigned long upload_interval = 60000;
 const int additionalBits = 0;
-unsigned long beginn = millis();
 char SensorValue[7][10];
 bool Ausgang[7];
 
@@ -283,12 +281,9 @@ void setupWebInterface() {
 }
 
 void setupMQTTClient() {
-  // Safer memory management - disconnect and set to nullptr instead of delete
   if (mqtt_client) {
-    if (mqtt_client->connected()) {
-      mqtt_client->disconnect();
-    }
-    // Don't delete, just reset to avoid destructor warning
+    mqtt_client->disconnect();
+    delete mqtt_client;
     mqtt_client = nullptr;
   }
   
@@ -330,8 +325,7 @@ void setup() {
   WiFi.setOutputPower(17); // Reduce WiFi output power (0-20.5dBm)
   
   // Check if WiFi credentials are configured (empty or whitespace-only)
-  if (strlen(config.ssid) == 0 || strlen(config.password) == 0 || 
-      strcmp(config.ssid, "") == 0 || strcmp(config.password, "") == 0) {
+  if (strlen(config.ssid) == 0 || strlen(config.password) == 0) {
     startSetupAP(); 
   }
   
@@ -427,7 +421,9 @@ void manageConnections() {
 
 void loop() {
   static unsigned long lastDataProcess = 0;
-  
+  static unsigned long lastUpload = 0;
+  const unsigned long uploadInterval = 60000;
+
   server.handleClient();
 
   manageConnections();
@@ -444,11 +440,11 @@ void loop() {
   }
 
   // Send data only when MQTT is connected
-  if (millis() - beginn > upload_interval && mqtt_client && mqtt_client->connected()) {
+  if (millis() - lastUpload > uploadInterval && mqtt_client && mqtt_client->connected()) {
     mqtt_daten_senden();
-    beginn = millis();
+    lastUpload = millis();
   }
-  
+
   // Small delay to prevent excessive CPU usage
   delay(10);
 }

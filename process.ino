@@ -39,7 +39,7 @@ namespace Process {
   }
 
   void invert() {
-    for (int i = 0; i < read_bit(i); i++)
+    for (int i = 0; i <= bit_number; i++)
       write_bit(i, read_bit(i) ? 0 : 1);
   }
 
@@ -69,10 +69,7 @@ namespace Process {
   }
 
   boolean check_device() {
-    if (data_bits[0] == 0x80 && data_bits[1] == 0x7f)
-      return true;
-    else
-      return false;
+    return data_bits[0] == 0x80 && data_bits[1] == 0x7f;
   }
 
   void fetch_sensor(int number) {
