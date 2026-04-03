@@ -22,7 +22,7 @@ Install with https://esphome.github.io/esp-web-tools/ (for example)
 This repository includes a GitHub Actions workflow that builds the firmware automatically for:
 - version tags like `v1.0.0`
 
-Build artifacts include the compiled `.bin` firmware for the **ESP8266 D1 Mini**.
+Build artifacts include the compiled `.bin` firmware for the **ESP8266**.
 
 
 ## Resources: 
