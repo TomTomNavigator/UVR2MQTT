@@ -13,15 +13,15 @@
 namespace Receive {
 
   void start() {
-    delay(2000);
+    static bool first_start = true;
+    if (first_start) {
+      delay(2000);
+      first_start = false;
+    }
     pulse_count = 0;
-    got_first = 0;
     last_bit_change = 0;
+    frame_complete = 0;
     receiving = true;
-    // on a CHANGE on the data pin pin_changed is called
-    //CM -> https://www.reddit.com/r/esp8266/comments/c8lbjr/help_an_idiot_out_trouble_with_interrupts/
-    //pinMode(interrupt, INPUT_PULLUP);
-    //attachInterrupt(digitalPinToInterrupt(interrupt), pin_changed, CHANGE); //modified -> added digitalPinToInterrupt
     attachInterrupt(interrupt, pin_changed, CHANGE);
   }
 
@@ -59,9 +59,11 @@ namespace Receive {
     else
       Process::data_bits[BIT_COUNT / 8] &= ~(1 << BIT_COUNT % 8); // Bit löschen // clear bit
 
-    if (BIT_COUNT == Process::bit_number)
-    // beende Übertragung, wenn Datenrahmen vollständig
+    if (BIT_COUNT == Process::bit_number) {
+      // beende Übertragung, wenn Datenrahmen vollständig
       stop(); // stop receiving when data frame is complete
+      frame_complete = 1;
+    }
   }
 
 }

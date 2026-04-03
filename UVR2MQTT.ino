@@ -427,7 +427,6 @@ void manageConnections() {
 }
 
 void loop() {
-  static unsigned long lastDataProcess = 0;
   static unsigned long lastUpload = 0;
   const unsigned long uploadInterval = 60000;
   const unsigned long fullRepublishInterval = 900000;
@@ -441,11 +440,13 @@ void loop() {
     mqtt_client->loop();
   }
 
-  // Process data less frequently to save CPU
-  if (!Receive::receiving && (millis() - lastDataProcess > 1000)) {
+  // Process data as soon as a fresh frame is complete
+  if (Receive::frame_complete) {
+    noInterrupts();
+    Receive::frame_complete = 0;
+    interrupts();
     Process::start();
     Receive::start();
-    lastDataProcess = millis();
   }
 
   // Send data only when MQTT is connected

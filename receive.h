@@ -30,11 +30,11 @@ namespace Receive {
   const unsigned long high_width = pulse_width + (pulse_width * percentage_variance / 100);
   const unsigned long double_low_width = double_pulse_width - (pulse_width * percentage_variance / 100);
   const unsigned long double_high_width = double_pulse_width + (pulse_width * percentage_variance / 100);
-  boolean got_first = 0; // erster oder zweiter Puls für ein Bit? // first or second pulse for one bit?
-  unsigned long last_bit_change = 0; // Merken des letzten Übergangs // remember the last transition
-  int pulse_count; // Anzahl der empfangenen Pulse // number of received pulses
+  volatile unsigned long last_bit_change = 0; // Merken des letzten Übergangs // remember the last transition
+  volatile int pulse_count; // Anzahl der empfangenen Pulse // number of received pulses
 #define BIT_COUNT (pulse_count / 2)
-  byte receiving; // Übertragungs-Flag // currently receiving?
+  volatile byte receiving; // Übertragungs-Flag // currently receiving?
+  volatile byte frame_complete = 0; // full fresh frame received and ready for processing
   
   void start(); // Übertragung beginnen // start receiving
   void stop(); // Übertragung stoppen // stop receiving
