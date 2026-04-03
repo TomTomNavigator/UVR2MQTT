@@ -304,6 +304,7 @@ void setupMQTTClient() {
   mqtt_client->setServer(config.mqtt_server, config.mqtt_port);
   mqtt_client->setKeepAlive(90); // Longer keepalive = fewer packets
   mqtt_client->setSocketTimeout(15); // Faster timeout for failed connections
+  mqtt_reset_publish_cache();
 }
 
 void startSetupAP() {
@@ -429,6 +430,8 @@ void loop() {
   static unsigned long lastDataProcess = 0;
   static unsigned long lastUpload = 0;
   const unsigned long uploadInterval = 60000;
+  const unsigned long fullRepublishInterval = 900000;
+  static unsigned long lastFullRepublish = 0;
 
   server.handleClient();
 
@@ -447,8 +450,12 @@ void loop() {
 
   // Send data only when MQTT is connected
   if (millis() - lastUpload > uploadInterval && mqtt_client && mqtt_client->connected()) {
-    mqtt_daten_senden();
+    bool force_all = (lastFullRepublish == 0) || (millis() - lastFullRepublish > fullRepublishInterval);
+    mqtt_daten_senden(force_all);
     lastUpload = millis();
+    if (force_all) {
+      lastFullRepublish = millis();
+    }
   }
 
   // Small delay to prevent excessive CPU usage
