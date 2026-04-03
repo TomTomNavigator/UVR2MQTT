@@ -26,9 +26,11 @@ namespace Dump {
 
   void sensor() {
     int sNr = Process::sensor.number;
-    if ((Process::sensor.value <1200) && (Process::sensor.value > -40)) {
+    if (!Process::sensor.invalid && (Process::sensor.value < 1200) && (Process::sensor.value > -40)) {
       // Convert float to C-style string. (width 4, precision 2)
       dtostrf(Process::sensor.value, 4, 2, SensorValue[sNr]);
+    } else {
+      SensorValue[sNr][0] = '\0';
     }
   }
 

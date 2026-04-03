@@ -17,13 +17,28 @@ boolean mqtt_connect(void) {
 
 void mqtt_daten_senden() {
   // The main loop now ensures this is only called when the client is connected.
-  char topic[200]; // Max topic length: config.mqtt_topic (128) + "Sensor" (6) + digit (1) + null (1) = ~136. 200 is safe.
+  char topic[160];
+  bool publish_failed = false;
+
   for (int sv = 1; sv <= 6; sv++) {
     snprintf(topic, sizeof(topic), "%sSensor%d", config.mqtt_topic, sv);
-    mqtt_client->publish(topic, SensorValue[sv]);
+    if (!mqtt_client->publish(topic, SensorValue[sv])) {
+      publish_failed = true;
+      break;
+    }
   }
-  for (int sv = 1; sv <= 6; sv++) {
-    snprintf(topic, sizeof(topic), "%sAusgang%d", config.mqtt_topic, sv);
-    mqtt_client->publish(topic, Ausgang[sv] ? "1" : "0");
+
+  if (!publish_failed) {
+    for (int sv = 1; sv <= 6; sv++) {
+      snprintf(topic, sizeof(topic), "%sAusgang%d", config.mqtt_topic, sv);
+      if (!mqtt_client->publish(topic, Ausgang[sv] ? "1" : "0")) {
+        publish_failed = true;
+        break;
+      }
+    }
+  }
+
+  if (publish_failed) {
+    mqtt_client->disconnect();
   }
 }

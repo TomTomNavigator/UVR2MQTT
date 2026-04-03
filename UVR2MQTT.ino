@@ -23,8 +23,9 @@ ESP8266WebServer server(80);
 
 WiFiClient wifiClient;
 WiFiClientSecure wifiClientSecure;
-
-PubSubClient* mqtt_client = nullptr;
+PubSubClient mqttClientPlain(wifiClient);
+PubSubClient mqttClientTls(wifiClientSecure);
+PubSubClient* mqtt_client = &mqttClientTls;
 
 void saveConfig() {
   Config tempConfig;
@@ -141,64 +142,73 @@ const char SAVE_HTML[] PROGMEM = R"(<!DOCTYPE html>
 </body>
 </html>)";
 
+void appendEscapedHtml(String& html, const char* value) {
+  for (const char* p = value; *p; ++p) {
+    switch (*p) {
+      case '&': html += F("&amp;"); break;
+      case '<': html += F("&lt;"); break;
+      case '>': html += F("&gt;"); break;
+      case '\"': html += F("&quot;"); break;
+      case '\'': html += F("&#39;"); break;
+      default: html += *p; break;
+    }
+  }
+}
+
+void appendInputField(String& html, const __FlashStringHelper* label, const char* id, const char* type, const char* value, bool required = false) {
+  html += F("<div class='form-group'><label for='");
+  html += id;
+  html += F("'>");
+  html += label;
+  html += F("</label><input type='");
+  html += type;
+  html += F("' id='");
+  html += id;
+  html += F("' name='");
+  html += id;
+  html += F("' value='");
+  appendEscapedHtml(html, value);
+  html += F("'");
+  if (required) {
+    html += F(" required");
+  }
+  html += F("></div>");
+}
+
 void handleConfig() {
   server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   server.sendHeader("Pragma", "no-cache");
   server.sendHeader("Expires", "-1");
-  
-  String html = FPSTR(CONFIG_HTML);
-  
-  // Build form fields
-  html += F("<div class='form-group'><label for='ssid'>WiFi SSID</label>");
-  html += F("<input type='text' id='ssid' name='ssid' value='");
-  html += String(config.ssid);
-  html += F("' required></div>");
-  
-  html += F("<div class='form-group'><label for='password'>WiFi Password</label>");
-  html += F("<input type='text' id='password' name='password' value='");
-  html += String(config.password);
-  html += F("'></div>");
-  
-  html += F("<div class='form-group'><label for='mqtt_server'>MQTT Server</label>");
-  html += F("<input type='text' id='mqtt_server' name='mqtt_server' value='");
-  html += String(config.mqtt_server);
-  html += F("' required></div>");
-  
+
+  String html;
+  html.reserve(2200);
+  html = FPSTR(CONFIG_HTML);
+
+  appendInputField(html, F("WiFi SSID"), "ssid", "text", config.ssid, true);
+  appendInputField(html, F("WiFi Password"), "password", "text", config.password);
+  appendInputField(html, F("MQTT Server"), "mqtt_server", "text", config.mqtt_server, true);
+
   html += F("<div class='form-group'><label for='mqtt_port'>MQTT Port</label>");
   html += F("<input type='number' id='mqtt_port' name='mqtt_port' value='");
   html += String(config.mqtt_port);
   html += F("' min='1' max='65535' required></div>");
-  
-  html += F("<div class='form-group'><label for='mqtt_user'>MQTT Username</label>");
-  html += F("<input type='text' id='mqtt_user' name='mqtt_user' value='");
-  html += String(config.mqtt_user);
-  html += F("'></div>");
-  
-  html += F("<div class='form-group'><label for='mqtt_pass'>MQTT Password</label>");
-  html += F("<input type='text' id='mqtt_pass' name='mqtt_pass' value='");
-  html += String(config.mqtt_pass);
-  html += F("'></div>");
-  
-  html += F("<div class='form-group'><label for='mqtt_topic'>MQTT Topic Prefix</label>");
-  html += F("<input type='text' id='mqtt_topic' name='mqtt_topic' value='");
-  html += String(config.mqtt_topic);
-  html += F("' required></div>");
-  
+
+  appendInputField(html, F("MQTT Username"), "mqtt_user", "text", config.mqtt_user);
+  appendInputField(html, F("MQTT Password"), "mqtt_pass", "text", config.mqtt_pass);
+  appendInputField(html, F("MQTT Topic Prefix"), "mqtt_topic", "text", config.mqtt_topic, true);
+
   html += F("<div class='form-group'><div class='checkbox-label'>");
   html += F("<input type='checkbox' id='mqtt_tls' name='mqtt_tls' value='1'");
   if (config.mqtt_tls) html += F(" checked");
   html += F("><label for='mqtt_tls'>Use TLS/SSL Encryption</label></div></div>");
-  
   html += F("<input type='submit' value='Save Configuration & Restart'>");
   html += F("</form>");
-  
   html += F("<form method='POST' action='/reset' style='margin-top: 20px;'>");
   html += F("<input type='submit' value='Reset to Factory Defaults' class='danger' ");
   html += F("onclick='return confirm(\"This will reset all settings to defaults. Continue?\");'>");
   html += F("</form>");
-  
   html += F("</div></body></html>");
-  
+
   server.send(200, "text/html", html);
 }
 
@@ -281,17 +291,15 @@ void setupWebInterface() {
 }
 
 void setupMQTTClient() {
-  if (mqtt_client) {
+  if (mqtt_client && mqtt_client->connected()) {
     mqtt_client->disconnect();
-    delete mqtt_client;
-    mqtt_client = nullptr;
   }
-  
+
   if (config.mqtt_tls) {
     wifiClientSecure.setInsecure();
-    mqtt_client = new PubSubClient(wifiClientSecure);
+    mqtt_client = &mqttClientTls;
   } else {
-    mqtt_client = new PubSubClient(wifiClient);
+    mqtt_client = &mqttClientPlain;
   }
   mqtt_client->setServer(config.mqtt_server, config.mqtt_port);
   mqtt_client->setKeepAlive(90); // Longer keepalive = fewer packets
@@ -333,9 +341,7 @@ void setup() {
   unsigned long startAttempt = millis();
   
   while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 300000) {
-    // Allow other tasks to run, like the web server if it's active (e.g., in AP mode)
-    // or just yield to the OS.
-    delay(100); // Small delay to prevent watchdog timer reset
+    delay(50);
     yield();
   }
   
