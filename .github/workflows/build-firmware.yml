@@ -1,0 +1,67 @@
+name: Build ESP8266 firmware
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Cache Arduino packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.arduino15/packages
+            ~/.arduino15/staging
+            ~/Arduino/libraries
+          key: ${{ runner.os }}-arduino-${{ hashFiles('**/*.ino', '**/*.h', '**/*.md') }}
+          restore-keys: |
+            ${{ runner.os }}-arduino-
+
+      - name: Install ESP8266 platform
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli core update-index
+          arduino-cli core install esp8266:esp8266
+
+      - name: Install libraries
+        run: |
+          arduino-cli lib install "PubSubClient"
+
+      - name: Compile firmware for Wemos D1 Mini
+        run: |
+          mkdir -p build
+          arduino-cli compile \
+            --fqbn esp8266:esp8266:d1_mini \
+            --output-dir build \
+            ./UVR2MQTT.ino
+
+      - name: Prepare artifact files
+        run: |
+          mkdir -p artifacts
+          cp build/*.bin artifacts/
+          ls -lah artifacts
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UVR2MQTT-d1-mini-firmware
+          path: artifacts/*.bin
+
+      - name: Upload firmware to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.bin

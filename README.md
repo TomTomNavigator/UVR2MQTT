@@ -11,10 +11,18 @@ I changed and adapted existing code to my use case, see resources for more.
 <img width="526" height="722" alt="image" src="https://github.com/user-attachments/assets/e50ed897-d3c9-4d3f-968a-3449aa54661c" />
 
 ## Installation
-Just compile it and install it to your ESP8266. I am using Pin **GPIO2 = D4**.
+Just compile it and install it to your ESP8266. I am using a **Wemos D1 Mini** and Pin **GPIO2 = D4**.
 Compiled *.bin ready to download in the Release section. 
 
 Install with https://esphome.github.io/esp-web-tools/ (for example) 
+
+## Automatic builds
+This repository includes a GitHub Actions workflow that builds the firmware automatically for:
+- pushes to `main`
+- pull requests
+- version tags like `v1.0.0`
+
+Build artifacts include the compiled `.bin` firmware for the **ESP8266 D1 Mini**.
 
 
 When the ESP8266 starts it will create a Setup Access Point - "UVR2MQTT-Setup" - where you can configure your settings. 
