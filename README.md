@@ -6,6 +6,8 @@ In my case a a UVR610, read more here: https://thomasheinz.net/enerboxx-uvr610-m
 
 --> Added a web config (configure via Wifi, 192.168.4.1) and also SSL/TLS MQTT option. 
 
+When the ESP8266 starts it will create a Setup Access Point - "UVR2MQTT-Setup" - where you can configure your settings. 
+
 I changed and adapted existing code to my use case, see resources for more. 
 
 <img width="526" height="722" alt="image" src="https://github.com/user-attachments/assets/e50ed897-d3c9-4d3f-968a-3449aa54661c" />
@@ -18,14 +20,10 @@ Install with https://esphome.github.io/esp-web-tools/ (for example)
 
 ## Automatic builds
 This repository includes a GitHub Actions workflow that builds the firmware automatically for:
-- pushes to `main`
-- pull requests
 - version tags like `v1.0.0`
 
 Build artifacts include the compiled `.bin` firmware for the **ESP8266 D1 Mini**.
 
-
-When the ESP8266 starts it will create a Setup Access Point - "UVR2MQTT-Setup" - where you can configure your settings. 
 
 ## Resources: 
  * https://github.com/Buster01/UVR2MQTT
