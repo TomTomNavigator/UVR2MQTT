@@ -10,6 +10,7 @@ bool Ausgang[7];
 #include "receive.h"
 #include "process.h"
 #include "dump.h"
+#include "capture.h"
 #include "MQTT.h"
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
@@ -311,6 +312,8 @@ void startSetupAP() {
 }
 
 void setup() {
+  Capture::begin();
+
   EEPROM.begin(EEPROM_SIZE);
   loadConfig();
 

@@ -5,11 +5,11 @@ namespace Process {
   byte data_bits[bit_number / 8 + 1]; // jedes Bit wird in eine Bitmap einsortiert // every bit gets sorted into a bitmap
   int start_bit; // erstes Bit des Datenrahmens // first bit of data frame
   sensor_t sensor;
+  boolean frame_valid = false;
 
   void start() {
-    if (prepare()) {
-      Dump::start();
-    }
+    frame_valid = prepare();
+    Dump::start();
   }
 
   boolean prepare() {
@@ -72,6 +72,10 @@ namespace Process {
 
   boolean check_device() {
     return data_bits[0] == 0x80 && data_bits[1] == 0x7f;
+  }
+
+  boolean last_frame_valid() {
+    return frame_valid;
   }
 
   void fetch_sensor(int number) {

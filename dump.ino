@@ -10,9 +10,12 @@
  
  */
 
+#include "capture.h"
+
 namespace Dump {
 
   void start() {
+    rawFrame();
     sensors();
     outputs();
   }
@@ -39,5 +42,9 @@ namespace Dump {
     for (int i = 1; i <= 6; i++) {
       Ausgang[i] = !!(word & (1 << (i - 1)));
     }
+  }
+
+  void rawFrame() {
+    Capture::logFrame(Process::last_frame_valid(), Process::start_bit);
   }
 }

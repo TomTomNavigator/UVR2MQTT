@@ -3,4 +3,5 @@ namespace Dump {
   void sensors();
   void sensor();
   void outputs();
+  void rawFrame();
 } 
