@@ -11,6 +11,34 @@ namespace Capture {
       }
       Serial.print(value, HEX);
     }
+
+    void printSensorSummary() {
+      if (!includeSensorSummary) {
+        return;
+      }
+
+      Serial.print(F("[capture] sensors="));
+      for (int i = 1; i <= 6; i++) {
+        if (i > 1) {
+          Serial.print(F(", "));
+        }
+        Serial.print(i);
+        Serial.print('=');
+        if (SensorValue[i][0] == '\0') {
+          Serial.print('-');
+        } else {
+          Serial.print(SensorValue[i]);
+        }
+      }
+      Serial.print(F(" outputs="));
+      for (int i = 1; i <= 6; i++) {
+        if (i > 1) {
+          Serial.print(',');
+        }
+        Serial.print(Ausgang[i] ? '1' : '0');
+      }
+      Serial.println();
+    }
   }
 
   void begin() {
@@ -52,5 +80,6 @@ namespace Capture {
       }
     }
     Serial.println();
+    printSensorSummary();
   }
 }
