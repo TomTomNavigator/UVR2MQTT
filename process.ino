@@ -18,6 +18,8 @@ namespace Process {
       invert();
       start_bit = analyze();
     }
+    if (start_bit == -1)
+      return false;
     trim();
     return check_device();
   } 
@@ -30,7 +32,7 @@ namespace Process {
       else
         sync = 0;
       if (sync == 16) {
-        while (read_bit(i) == 1)
+        while (i < bit_number && read_bit(i) == 1)
           i++;
         return i;
       }
@@ -39,8 +41,9 @@ namespace Process {
   }
 
   void invert() {
-    for (int i = 0; i <= bit_number; i++)
-      write_bit(i, read_bit(i) ? 0 : 1);
+    int byte_count = bit_number / 8 + 1;
+    for (int i = 0; i < byte_count; i++)
+      data_bits[i] ^= 0xFF;
   }
 
   byte read_bit(int pos) {
@@ -58,9 +61,8 @@ namespace Process {
       data_bits[row] &= ~(1 << col);
   }
 
-  void trim() {    
-    for (int i = start_bit, bit = 0; i < bit_number; i++) {
-      int offset = i - start_bit;
+  void trim() {
+    for (int i = start_bit, bit = 0, offset = 0; i < bit_number; i++, offset++) {
       if (offset % 10 && (offset + 1) % 10) {
         write_bit(bit, read_bit(i));
         bit++;
@@ -128,10 +130,5 @@ namespace Process {
       }
     }
     sensor.value = value;
-  }
-
-  boolean fetch_output(int output) {
-    int outputs = data_bits[41] * 256 + data_bits[40];
-    return !!(outputs & (1 << (output - 1)));
   }
 }

@@ -35,8 +35,9 @@ namespace Dump {
   }
 
   void outputs() {
+    int word = Process::data_bits[41] * 256 + Process::data_bits[40];
     for (int i = 1; i <= 6; i++) {
-      Ausgang[i]= Process::fetch_output(i);
+      Ausgang[i] = !!(word & (1 << (i - 1)));
     }
   }
 }

@@ -56,19 +56,6 @@ void resetToDefaults() {
   EEPROM.commit();
 }
 
-void stopAllProcessing() {
-  // Disconnect MQTT client
-  if (mqtt_client && mqtt_client->connected()) {
-    mqtt_client->disconnect();
-  }
-  
-  // Disable WiFi auto-reconnect
-  WiFi.setAutoReconnect(false);
-  
-  // Give time for cleanup
-  delay(100);
-}
-
 void loadConfig() {
   EEPROM.get(0, config);
   
@@ -343,7 +330,6 @@ void setup() {
   
   while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 300000) {
     delay(50);
-    yield();
   }
   
   if (WiFi.status() != WL_CONNECTED) {
@@ -459,6 +445,5 @@ void loop() {
     }
   }
 
-  // Small delay to prevent excessive CPU usage
-  delay(10);
+  yield();
 }

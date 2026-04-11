@@ -21,20 +21,19 @@ namespace Receive {
     pulse_count = 0;
     last_bit_change = 0;
     frame_complete = 0;
-    receiving = true;
     attachInterrupt(interrupt, pin_changed, CHANGE);
   }
 
-  void stop() {
+  void ICACHE_RAM_ATTR stop() {
     detachInterrupt(interrupt);
-    receiving = false;
   }
 
   //CM -> https://www.reddit.com/r/esp8266/comments/c8lbjr/help_an_idiot_out_trouble_with_interrupts/
   void ICACHE_RAM_ATTR pin_changed() {
     byte val = digitalRead(dataPin); // Zustand einlesen // read state
-    unsigned long time_diff = micros() - last_bit_change;
-    last_bit_change = micros();
+    unsigned long now = micros();
+    unsigned long time_diff = now - last_bit_change;
+    last_bit_change = now;
     // einfache Pulsweite? // singe pulse width?
     if (time_diff >= low_width && time_diff <= high_width) {
       process_bit(val);
@@ -48,18 +47,21 @@ namespace Receive {
     } 
   }
 
-  void process_bit(byte b) {
+  void ICACHE_RAM_ATTR process_bit(byte b) {
     // den ersten Impuls ignorieren // ignore first pulse
-    pulse_count++;
-    if (pulse_count % 2)
+    int count = ++pulse_count;
+    if (count & 1)
       return;
 
+    int bit_pos = count / 2;
+    int row = bit_pos / 8;
+    int col = bit_pos % 8;
     if (b)
-      Process::data_bits[BIT_COUNT / 8] |= 1 << BIT_COUNT % 8; // Bit setzen // set bit
+      Process::data_bits[row] |= 1 << col; // Bit setzen // set bit
     else
-      Process::data_bits[BIT_COUNT / 8] &= ~(1 << BIT_COUNT % 8); // Bit löschen // clear bit
+      Process::data_bits[row] &= ~(1 << col); // Bit löschen // clear bit
 
-    if (BIT_COUNT == Process::bit_number) {
+    if (bit_pos == Process::bit_number) {
       // beende Übertragung, wenn Datenrahmen vollständig
       stop(); // stop receiving when data frame is complete
       frame_complete = 1;

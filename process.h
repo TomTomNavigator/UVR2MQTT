@@ -26,19 +26,6 @@ namespace Process {
 #define LOWER       0b10
 #define STANDBY     0b11
 
-  // Zeitstempel der Regelung
-  // heating control timestamp
-  typedef struct {
-    byte minute;
-    byte hour;
-    byte day;
-    byte month;
-    int year;
-    boolean summer_time;
-  } 
-  timestamp_t;
-  timestamp_t timestamp;
-
   // sensor
   typedef struct {
     byte number;
@@ -65,5 +52,4 @@ namespace Process {
   // Informationen auslesen
   // readout information
   void fetch_sensor(int sensor); // Sensor
-  boolean fetch_output(int output); // Ausgang
 }
