@@ -71,7 +71,15 @@ namespace Process {
   }
 
   boolean check_device() {
-    return data_bits[0] == 0x80 && data_bits[1] == 0x7f;
+    return data_bits[0] == 0x80 && data_bits[1] == 0x7f && check_checksum();
+  }
+
+  boolean check_checksum() {
+    byte checksum = 0;
+    for (int i = 0; i < 63; i++) {
+      checksum += data_bits[i];
+    }
+    return checksum == data_bits[63];
   }
 
   boolean last_frame_valid() {

@@ -16,6 +16,9 @@ namespace Dump {
 
   void start() {
     rawFrame();
+    if (!Process::last_frame_valid()) {
+      return;
+    }
     sensors();
     outputs();
   }

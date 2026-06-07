@@ -4,25 +4,507 @@ const int additionalBits = 0;
 char SensorValue[7][10];
 bool Ausgang[7];
 
+#include <PubSubClient.h>
+#include <ESP8266WiFi.h>
+#include <WiFiClientSecure.h> 
 #include "receive.h"
 #include "process.h"
 #include "dump.h"
-#include "capture.h"
+#include "MQTT.h"
+#include <ESP8266WebServer.h>
+#include <EEPROM.h>
+#include "config.h"
+#include <WiFiClient.h>
+
+#define EEPROM_SIZE 512
+
+Config config;
+ESP8266WebServer server(80);
+
+WiFiClient wifiClient;
+WiFiClientSecure wifiClientSecure;
+PubSubClient mqttClientPlain(wifiClient);
+PubSubClient mqttClientTls(wifiClientSecure);
+PubSubClient* mqtt_client = &mqttClientTls;
+
+unsigned long validFrameCount = 0;
+unsigned long invalidFrameCount = 0;
+unsigned long lastValidFrameMillis = 0;
+unsigned long lastInvalidFrameMillis = 0;
+
+void saveConfig() {
+  Config tempConfig;
+  EEPROM.get(0, tempConfig);
+  
+  if (memcmp(&tempConfig, &config, sizeof(Config)) != 0) {
+    EEPROM.put(0, config);
+    EEPROM.commit();
+  }
+}
+
+void setDefaultConfig() {
+  memset(&config, 0, sizeof(Config));
+  strcpy(config.magic, "UVR2MQTT");
+  strcpy(config.ssid, "");
+  strcpy(config.password, "");
+  strcpy(config.mqtt_server, "abc123.s1.eu.hivemq.cloud");
+  strcpy(config.mqtt_user, "user");
+  strcpy(config.mqtt_pass, "passw0rd");
+  strcpy(config.mqtt_topic, "heating/UVR610K/");
+  config.mqtt_port = 8883;
+  config.mqtt_tls = true;
+}
+
+void resetToDefaults() {
+  setDefaultConfig();
+  EEPROM.put(0, config);
+  EEPROM.commit();
+}
+
+void loadConfig() {
+  EEPROM.get(0, config);
+  
+  // If no valid config found, use defaults
+  if (strcmp(config.magic, "UVR2MQTT") != 0) {
+    setDefaultConfig();
+    EEPROM.put(0, config);
+    EEPROM.commit();
+  }
+}
+
+void handleWebInterface() {
+  // Redirect to config page since we don't have a homepage
+  server.sendHeader("Location", "/config");
+  server.send(302, "text/plain", "");
+}
+
+// Minimal HTML templates to save flash space
+const char CONFIG_HTML[] PROGMEM = R"(<!DOCTYPE html>
+<html>
+<head>
+    <title>UVR2MQTT Config</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { color: #333; margin-bottom: 20px; }
+        label { display: block; margin-top: 15px; margin-bottom: 5px; font-weight: bold; color: #555; }
+        input[type="text"], input[type="password"], input[type="number"] { 
+            width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; 
+            border-radius: 4px; box-sizing: border-box; font-size: 14px; 
+        }
+        input[type="checkbox"] { margin-right: 8px; transform: scale(1.2); }
+        .checkbox-label { display: flex; align-items: center; margin: 15px 0; }
+        input[type="submit"] { 
+            background: #007cba; color: white; border: none; padding: 12px 20px; 
+            cursor: pointer; border-radius: 4px; font-size: 16px; margin-top: 20px;
+            width: 100%; 
+        }
+        input[type="submit"]:hover { background: #005a87; }
+        .danger { background: #d9534f; }
+        .danger:hover { background: #c9302c; }
+        .warning { background: #ff6b35; }
+        .warning:hover { background: #e55a2b; }
+        .form-group { margin-bottom: 15px; }
+        .button-group { margin-top: 30px; display: flex; gap: 10px; }
+        .button-group input { margin: 0; flex: 1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>UVR2MQTT Configuration</h2>
+        <form method="POST" action="/save">)";
+
+const char SAVE_HTML[] PROGMEM = R"(<!DOCTYPE html>
+<html>
+<head>
+    <title>Settings Saved</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; text-align: center; }
+        .container { max-width: 400px; margin: 50px auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { color: #28a745; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Settings Saved!</h2>
+        <p>Device is restarting with new configuration...</p>
+    </div>
+</body>
+</html>)";
+
+void appendEscapedHtml(String& html, const char* value) {
+  for (const char* p = value; *p; ++p) {
+    switch (*p) {
+      case '&': html += F("&amp;"); break;
+      case '<': html += F("&lt;"); break;
+      case '>': html += F("&gt;"); break;
+      case '\"': html += F("&quot;"); break;
+      case '\'': html += F("&#39;"); break;
+      default: html += *p; break;
+    }
+  }
+}
+
+void appendInputField(String& html, const __FlashStringHelper* label, const char* id, const char* type, const char* value, bool required = false) {
+  html += F("<div class='form-group'><label for='");
+  html += id;
+  html += F("'>");
+  html += label;
+  html += F("</label><input type='");
+  html += type;
+  html += F("' id='");
+  html += id;
+  html += F("' name='");
+  html += id;
+  html += F("' value='");
+  appendEscapedHtml(html, value);
+  html += F("'");
+  if (required) {
+    html += F(" required");
+  }
+  html += F("></div>");
+}
+
+void handleConfig() {
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server.sendHeader("Pragma", "no-cache");
+  server.sendHeader("Expires", "-1");
+
+  String html;
+  html.reserve(2200);
+  html = FPSTR(CONFIG_HTML);
+
+  appendInputField(html, F("WiFi SSID"), "ssid", "text", config.ssid, true);
+  appendInputField(html, F("WiFi Password"), "password", "text", config.password);
+  appendInputField(html, F("MQTT Server"), "mqtt_server", "text", config.mqtt_server, true);
+
+  html += F("<div class='form-group'><label for='mqtt_port'>MQTT Port</label>");
+  html += F("<input type='number' id='mqtt_port' name='mqtt_port' value='");
+  html += String(config.mqtt_port);
+  html += F("' min='1' max='65535' required></div>");
+
+  appendInputField(html, F("MQTT Username"), "mqtt_user", "text", config.mqtt_user);
+  appendInputField(html, F("MQTT Password"), "mqtt_pass", "text", config.mqtt_pass);
+  appendInputField(html, F("MQTT Topic Prefix"), "mqtt_topic", "text", config.mqtt_topic, true);
+
+  html += F("<div class='form-group'><div class='checkbox-label'>");
+  html += F("<input type='checkbox' id='mqtt_tls' name='mqtt_tls' value='1'");
+  if (config.mqtt_tls) html += F(" checked");
+  html += F("><label for='mqtt_tls'>Use TLS/SSL Encryption</label></div></div>");
+  html += F("<input type='submit' value='Save Configuration & Restart'>");
+  html += F("</form>");
+  html += F("<form method='POST' action='/reset' style='margin-top: 20px;'>");
+  html += F("<input type='submit' value='Reset to Factory Defaults' class='danger' ");
+  html += F("onclick='return confirm(\"This will reset all settings to defaults. Continue?\");'>");
+  html += F("</form>");
+  html += F("<p style='margin-top:20px'><a href='/status'>Device status</a></p>");
+  html += F("</div></body></html>");
+
+  server.send(200, "text/html", html);
+}
+
+void handleRestart() {
+  server.send(200, "text/html", 
+    F("<!DOCTYPE html><html><head><title>Restart Device</title><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+      "<meta http-equiv=\"refresh\" content=\"3;url=/config\">"
+      "<style>body{font-family:Arial;margin:20px;background:#f5f5f5;text-align:center;}"
+      ".container{max-width:400px;margin:50px auto;background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);}"
+      "h2{color:#ff6b35;} .btn{background:#007cba;color:white;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;margin:10px;}"
+      ".btn:hover{background:#005a87;} .danger{background:#d9534f;} .danger:hover{background:#c9302c;}</style></head><body><div class=\"container\">"
+      "<h2>Restart Device</h2><p>Are you sure you want to restart the device?</p>"
+      "<form method='POST' action='/restart' style='display:inline;'><input type='submit' value='Yes, Restart Now' class='btn danger'></form>"
+      "<a href='/config' class='btn'>Cancel</a></div></body></html>"));
+}
+
+void handleRestartConfirm() {
+  server.send(200, "text/html", 
+    F("<!DOCTYPE html><html><head><title>Restarting</title><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+      "<meta http-equiv=\"refresh\" content=\"5;url=/config\">"
+      "<style>body{font-family:Arial;margin:20px;background:#f5f5f5;text-align:center;}"
+      ".container{max-width:400px;margin:50px auto;background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);}"
+      "h2{color:#ff6b35;}</style></head><body><div class=\"container\">"
+      "<h2>Restarting Device...</h2><p>The device is restarting now.</p><p>Please wait a moment and refresh the page.</p>"
+      "</div></body></html>"));
+  delay(3000);
+  ESP.restart();
+}
+
+void handleSave() {
+  if (server.hasArg("ssid")) {
+    strlcpy(config.ssid, server.arg("ssid").c_str(), sizeof(config.ssid));
+  }
+  if (server.hasArg("password")) {
+    strlcpy(config.password, server.arg("password").c_str(), sizeof(config.password));
+  }
+  if (server.hasArg("mqtt_server")) {
+    strlcpy(config.mqtt_server, server.arg("mqtt_server").c_str(), sizeof(config.mqtt_server));
+  }
+  if (server.hasArg("mqtt_user")) {
+    strlcpy(config.mqtt_user, server.arg("mqtt_user").c_str(), sizeof(config.mqtt_user));
+  }
+  if (server.hasArg("mqtt_pass")) {
+    strlcpy(config.mqtt_pass, server.arg("mqtt_pass").c_str(), sizeof(config.mqtt_pass));
+  }
+  if (server.hasArg("mqtt_port")) {
+    int port = server.arg("mqtt_port").toInt();
+    if (port > 0 && port <= 65535) config.mqtt_port = port;
+  }
+  if (server.hasArg("mqtt_topic")) {
+    strlcpy(config.mqtt_topic, server.arg("mqtt_topic").c_str(), sizeof(config.mqtt_topic));
+  }
+  config.mqtt_tls = server.hasArg("mqtt_tls");
+  
+  saveConfig();
+  server.send_P(200, "text/html", SAVE_HTML);
+  delay(5000);
+  ESP.restart();
+}
+
+void appendStatusRow(String& html, const __FlashStringHelper* label, const String& value) {
+  html += F("<tr><th>");
+  html += label;
+  html += F("</th><td>");
+  html += value;
+  html += F("</td></tr>");
+}
+
+String formatAge(unsigned long timestampMillis) {
+  if (timestampMillis == 0) {
+    return F("never");
+  }
+  unsigned long ageSeconds = (millis() - timestampMillis) / 1000;
+  return String(ageSeconds) + F("s ago");
+}
+
+void handleStatus() {
+  String html;
+  html.reserve(1800);
+  html = F("<!DOCTYPE html><html><head><title>UVR2MQTT Status</title>"
+           "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+           "<style>body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5;}"
+           ".container{max-width:650px;margin:0 auto;background:white;padding:20px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);}"
+           "table{width:100%;border-collapse:collapse;}th{text-align:left;color:#555;width:45%;}td,th{padding:8px;border-bottom:1px solid #eee;}"
+           ".ok{color:#198754;font-weight:bold}.bad{color:#d9534f;font-weight:bold}.nav{margin-top:20px}</style></head><body><div class='container'>"
+           "<h2>UVR2MQTT Status</h2><table>");
+
+  appendStatusRow(html, F("WiFi"), WiFi.status() == WL_CONNECTED ? F("<span class='ok'>connected</span>") : F("<span class='bad'>disconnected</span>"));
+  appendStatusRow(html, F("SSID"), WiFi.SSID());
+  appendStatusRow(html, F("IP"), WiFi.localIP().toString());
+  appendStatusRow(html, F("RSSI"), WiFi.status() == WL_CONNECTED ? String(WiFi.RSSI()) + F(" dBm") : F("n/a"));
+  appendStatusRow(html, F("MQTT"), (mqtt_client && mqtt_client->connected()) ? F("<span class='ok'>connected</span>") : F("<span class='bad'>disconnected</span>"));
+  appendStatusRow(html, F("MQTT server"), String(config.mqtt_server) + F(":") + String(config.mqtt_port));
+  appendStatusRow(html, F("MQTT TLS"), config.mqtt_tls ? F("enabled") : F("disabled"));
+  appendStatusRow(html, F("Free heap"), String(ESP.getFreeHeap()) + F(" bytes"));
+  appendStatusRow(html, F("Sketch size"), String(ESP.getSketchSize()) + F(" bytes"));
+  appendStatusRow(html, F("Free sketch space"), String(ESP.getFreeSketchSpace()) + F(" bytes"));
+  appendStatusRow(html, F("Uptime"), String(millis() / 1000) + F("s"));
+  appendStatusRow(html, F("Valid frames"), String(validFrameCount));
+  appendStatusRow(html, F("Invalid frames"), String(invalidFrameCount));
+  appendStatusRow(html, F("Last valid frame"), formatAge(lastValidFrameMillis));
+  appendStatusRow(html, F("Last invalid frame"), formatAge(lastInvalidFrameMillis));
+
+  html += F("</table><div class='nav'><a href='/config'>Configuration</a></div></div></body></html>");
+  server.send(200, "text/html", html);
+}
+
+void setupWebInterface() {
+  server.on("/", handleWebInterface);
+  server.on("/config", handleConfig);
+  server.on("/status", handleStatus);
+  server.on("/save", HTTP_POST, handleSave);
+  server.on("/restart", HTTP_GET, handleRestart);  // Add GET handler for restart page
+  server.on("/restart", HTTP_POST, handleRestartConfirm);  // POST handler for actual restart
+  server.on("/reset", HTTP_POST, []() {
+    resetToDefaults();
+    server.send(200, "text/html", 
+      F("<!DOCTYPE html><html><head><title>Reset Complete</title><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        "<style>body{font-family:Arial;margin:20px;background:#f5f5f5;text-align:center;}"
+        ".container{max-width:400px;margin:50px auto;background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);}"
+        "h2{color:#d9534f;}</style></head><body><div class=\"container\">"
+        "<h2>Reset to Factory Defaults</h2><p>All settings have been reset.</p><p>Device restarting in 3 seconds...</p>"
+        "</div></body></html>"));
+    delay(3000);
+    ESP.restart();
+  });
+  server.begin();
+}
+
+void setupMQTTClient() {
+  if (mqtt_client && mqtt_client->connected()) {
+    mqtt_client->disconnect();
+  }
+
+  if (config.mqtt_tls) {
+    wifiClientSecure.setInsecure();
+    mqtt_client = &mqttClientTls;
+  } else {
+    mqtt_client = &mqttClientPlain;
+  }
+  mqtt_client->setServer(config.mqtt_server, config.mqtt_port);
+  mqtt_client->setKeepAlive(90); // Longer keepalive = fewer packets
+  mqtt_client->setSocketTimeout(15); // Faster timeout for failed connections
+  mqtt_reset_publish_cache();
+}
+
+void startSetupAP() {
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP("UVR2MQTT-Setup");
+  setupWebInterface();
+  
+  unsigned long setupStart = millis();
+  const unsigned long setupTimeout = 600000; // 10 minutes in milliseconds
+  
+  while (millis() - setupStart < setupTimeout) {
+    server.handleClient();
+    delay(10);
+  }
+  
+  ESP.restart();
+}
 
 void setup() {
-  Capture::begin();
+  EEPROM.begin(EEPROM_SIZE);
+  loadConfig();
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  WiFi.setAutoReconnect(false);
+  WiFi.persistent(false); // Reduce flash writes
+  WiFi.setOutputPower(17); // Reduce WiFi output power (0-20.5dBm)
+  
+  // Check if WiFi credentials are configured (empty or whitespace-only)
+  if (strlen(config.ssid) == 0 || strlen(config.password) == 0) {
+    startSetupAP(); 
+  }
+  
+  WiFi.begin(config.ssid, config.password);
+  unsigned long startAttempt = millis();
+  
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 300000) {
+    delay(50);
+  }
+  
+  if (WiFi.status() != WL_CONNECTED) {
+    startSetupAP(); // This now has a 10-minute timeout and will restart
+    // Function will not return - device restarts after 10 minutes
+  }
+
+  setupMQTTClient();
+  
+  // Start web interface for configuration and monitoring
+  setupWebInterface();
+
+  // Remove redundant WiFi connection attempts - already connected above
   Receive::start();
 }
 
+// Reconnection logic
+unsigned long lastWifiReconnectAttempt = 0;
+unsigned long wifiReconnectInterval = 10000; // Start with 10 seconds
+const unsigned long maxWifiReconnectInterval = 300000; // Max 5 minutes
+unsigned long wifiDisconnectedSince = 0; // Track when WiFi first disconnected
+const unsigned long wifiRestartTimeout = 43200000; // 12 hours in milliseconds
+
+unsigned long lastMqttReconnectAttempt = 0;
+unsigned long mqttReconnectInterval = 10000; // Start with 10 seconds
+const unsigned long maxMqttReconnectInterval = 300000; // Max 5 minutes
+
+void manageConnections() {
+  // Manage WiFi connection
+  if (WiFi.status() != WL_CONNECTED) {
+    // Track when WiFi first disconnected
+    if (wifiDisconnectedSince == 0) {
+      wifiDisconnectedSince = millis();
+    }
+    
+    // If WiFi has been disconnected for 12 hours, restart device
+    if (millis() - wifiDisconnectedSince > wifiRestartTimeout) {
+      ESP.restart();
+    }
+    
+    // If WiFi is disconnected, ensure MQTT is also seen as disconnected
+    if (mqtt_client && mqtt_client->connected()) {
+      mqtt_client->disconnect();
+    }
+    
+    if (millis() - lastWifiReconnectAttempt > wifiReconnectInterval) {
+      lastWifiReconnectAttempt = millis();
+      
+      // Try to reconnect
+      WiFi.begin(config.ssid, config.password);
+      
+      // Increase backoff interval for next time
+      wifiReconnectInterval *= 2;
+      if (wifiReconnectInterval > maxWifiReconnectInterval) {
+        wifiReconnectInterval = maxWifiReconnectInterval;
+      }
+    }
+  } else {
+    // If WiFi is connected, reset the WiFi backoff interval and disconnect timer
+    wifiReconnectInterval = 10000;
+    wifiDisconnectedSince = 0; // Reset disconnect timer 
+
+    // Manage MQTT connection
+    if (mqtt_client && !mqtt_client->connected()) {
+      if (millis() - lastMqttReconnectAttempt > mqttReconnectInterval) {
+        lastMqttReconnectAttempt = millis();
+        
+        if (mqtt_connect()) {
+          // If MQTT connects, reset the MQTT backoff interval
+          mqttReconnectInterval = 10000;
+        } else {
+          // If MQTT fails to connect, increase the backoff interval
+          mqttReconnectInterval *= 2;
+          if (mqttReconnectInterval > maxMqttReconnectInterval) {
+            mqttReconnectInterval = maxMqttReconnectInterval;
+          }
+        }
+      }
+    }
+  }
+}
+
 void loop() {
+  static unsigned long lastUpload = 0;
+  const unsigned long uploadInterval = 60000;
+  const unsigned long fullRepublishInterval = 900000;
+  static unsigned long lastFullRepublish = 0;
+
+  server.handleClient();
+
+  manageConnections();
+
+  if (mqtt_client && mqtt_client->connected()) {
+    mqtt_client->loop();
+  }
+
+  // Process data as soon as a fresh frame is complete
   if (Receive::frame_complete) {
     noInterrupts();
     Receive::frame_complete = 0;
     interrupts();
-
     Process::start();
+    if (Process::last_frame_valid()) {
+      validFrameCount++;
+      lastValidFrameMillis = millis();
+    } else {
+      invalidFrameCount++;
+      lastInvalidFrameMillis = millis();
+    }
     Receive::start();
   }
 
-  delay(1);
+  // Send data only when MQTT is connected
+  if (millis() - lastUpload > uploadInterval && mqtt_client && mqtt_client->connected()) {
+    bool force_all = (lastFullRepublish == 0) || (millis() - lastFullRepublish > fullRepublishInterval);
+    mqtt_daten_senden(force_all);
+    lastUpload = millis();
+    if (force_all) {
+      lastFullRepublish = millis();
+    }
+  }
+
+  yield();
 }
