@@ -24,12 +24,12 @@ namespace Receive {
     attachInterrupt(interrupt, pin_changed, CHANGE);
   }
 
-  void ICACHE_RAM_ATTR stop() {
+  void IRAM_ATTR stop() {
     detachInterrupt(interrupt);
   }
 
   //CM -> https://www.reddit.com/r/esp8266/comments/c8lbjr/help_an_idiot_out_trouble_with_interrupts/
-  void ICACHE_RAM_ATTR pin_changed() {
+  void IRAM_ATTR pin_changed() {
     byte val = digitalRead(dataPin); // Zustand einlesen // read state
     unsigned long now = micros();
     unsigned long time_diff = now - last_bit_change;
@@ -47,13 +47,14 @@ namespace Receive {
     } 
   }
 
-  void ICACHE_RAM_ATTR process_bit(byte b) {
+  void IRAM_ATTR process_bit(byte b) {
     // den ersten Impuls ignorieren // ignore first pulse
     int count = ++pulse_count;
     if (count & 1)
       return;
 
-    int bit_pos = count / 2;
+    int completed_bits = count / 2;
+    int bit_pos = completed_bits - 1;
     int row = bit_pos / 8;
     int col = bit_pos % 8;
     if (b)
@@ -61,7 +62,7 @@ namespace Receive {
     else
       Process::data_bits[row] &= ~(1 << col); // Bit löschen // clear bit
 
-    if (bit_pos == Process::bit_number) {
+    if (completed_bits == Process::bit_number) {
       // beende Übertragung, wenn Datenrahmen vollständig
       stop(); // stop receiving when data frame is complete
       frame_complete = 1;

@@ -1,12 +1,15 @@
 name: Build ESP8266 firmware
 
 permissions:
-  contents: write
+  contents: read
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -16,6 +19,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Test frame and MQTT logic
+        run: |
+          mkdir -p build/tests
+          g++ -std=c++17 -Wall -Wextra -Werror \
+            -Itests \
+            tests/frame_logic_test.cpp \
+            -o build/tests/frame_logic_test
+          build/tests/frame_logic_test
+          g++ -std=c++17 -Wall -Wextra -Werror \
+            -Itests \
+            tests/mqtt_logic_test.cpp \
+            -o build/tests/mqtt_logic_test
+          build/tests/mqtt_logic_test
 
       - name: Set up Arduino CLI
         uses: arduino/setup-arduino-cli@v2
@@ -36,11 +53,11 @@ jobs:
           arduino-cli config init --overwrite
           arduino-cli config set board_manager.additional_urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
           arduino-cli core update-index
-          arduino-cli core install esp8266:esp8266
+          arduino-cli core install esp8266:esp8266@3.1.2
 
       - name: Install libraries
         run: |
-          arduino-cli lib install "PubSubClient"
+          arduino-cli lib install "PubSubClient@2.8.0"
 
       - name: Compile firmware for Wemos D1 Mini
         run: |
@@ -62,8 +79,21 @@ jobs:
           name: UVR2MQTT-d1-mini-firmware
           path: artifacts/*.bin
 
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download firmware artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: UVR2MQTT-d1-mini-firmware
+          path: artifacts
+
       - name: Upload firmware to GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}

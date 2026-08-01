@@ -1,3 +1,8 @@
+#ifndef UVR2MQTT_RECEIVE_H
+#define UVR2MQTT_RECEIVE_H
+
+#include <Arduino.h>
+
 /*  
  ~~~~~~~
  uvr2web
@@ -32,14 +37,15 @@ namespace Receive {
   const unsigned long double_high_width = double_pulse_width + (pulse_width * percentage_variance / 100);
   volatile unsigned long last_bit_change = 0; // Merken des letzten Übergangs // remember the last transition
   volatile int pulse_count; // Anzahl der empfangenen Pulse // number of received pulses
-#define BIT_COUNT (pulse_count / 2)
   volatile byte frame_complete = 0; // full fresh frame received and ready for processing
   
   void start(); // Übertragung beginnen // start receiving
-  void ICACHE_RAM_ATTR stop(); // Übertragung stoppen // stop receiving
+  void IRAM_ATTR stop(); // Übertragung stoppen // stop receiving
   // wird aufgerufen, sobald sich der Zustand am Daten-Pin ändert
-  void ICACHE_RAM_ATTR pin_changed(); // is called when the state of the data pin changes
+  void IRAM_ATTR pin_changed(); // is called when the state of the data pin changes
   // speichert ein von pin_changed ermitteltes Bit
-  void ICACHE_RAM_ATTR process_bit(unsigned char b); // saves a bit detected by pin_changed
+  void IRAM_ATTR process_bit(unsigned char b); // saves a bit detected by pin_changed
 
 }
+
+#endif

@@ -3,6 +3,8 @@ const byte interrupt = 2;
 const int additionalBits = 0;
 char SensorValue[7][10];
 bool Ausgang[7];
+bool hasValidFrame = false;
+bool mqttStateDirty = false;
 
 #include <PubSubClient.h>
 #include <ESP8266WiFi.h>
@@ -400,6 +402,7 @@ void manageConnections() {
         if (mqtt_connect()) {
           // If MQTT connects, reset the MQTT backoff interval
           mqttReconnectInterval = 10000;
+          mqttStateDirty = hasValidFrame;
         } else {
           // If MQTT fails to connect, increase the backoff interval
           mqttReconnectInterval *= 2;
@@ -431,17 +434,24 @@ void loop() {
     noInterrupts();
     Receive::frame_complete = 0;
     interrupts();
-    Process::start();
+    if (Process::start()) {
+      hasValidFrame = true;
+      mqttStateDirty = true;
+    }
     Receive::start();
   }
 
-  // Send data only when MQTT is connected
-  if (millis() - lastUpload > uploadInterval && mqtt_client && mqtt_client->connected()) {
+  // Publish only after a valid frame. Changed values are sent immediately;
+  // the timer remains as a periodic reliability fallback.
+  if (hasValidFrame && mqtt_client && mqtt_client->connected() &&
+      (mqttStateDirty || millis() - lastUpload > uploadInterval)) {
     bool force_all = (lastFullRepublish == 0) || (millis() - lastFullRepublish > fullRepublishInterval);
-    mqtt_daten_senden(force_all);
-    lastUpload = millis();
-    if (force_all) {
-      lastFullRepublish = millis();
+    if (mqtt_daten_senden(force_all)) {
+      mqttStateDirty = false;
+      lastUpload = millis();
+      if (force_all) {
+        lastFullRepublish = millis();
+      }
     }
   }
 

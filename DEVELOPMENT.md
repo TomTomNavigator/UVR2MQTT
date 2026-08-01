@@ -1,8 +1,10 @@
 # Development Notes
 
-## Current state (2026-04-11)
+## Current state (2026-08-01)
 
-All recent work has been optimisation and reliability hardening — no functional changes to the DL bus protocol handling or MQTT topic layout.
+The production firmware remains based on the last successfully built `v0.0.4` release. WiFi setup, web configuration, TLS behavior, MQTT topics, and EEPROM configuration remain unchanged.
+
+The current reliability pass adds complete-frame and checksum validation, corrects receive-buffer boundaries and negative room-value decoding, and publishes retained MQTT state only after the first valid frame. Host-side regression tests cover these cases.
 
 ---
 

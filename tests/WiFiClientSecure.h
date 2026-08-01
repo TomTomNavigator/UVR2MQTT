@@ -1,0 +1,6 @@
+#ifndef UVR2MQTT_TEST_WIFI_CLIENT_SECURE_H
+#define UVR2MQTT_TEST_WIFI_CLIENT_SECURE_H
+
+class WiFiClientSecure {};
+
+#endif

@@ -1,15 +1,19 @@
 namespace Process {
 
   // Variable definitions
-  const int bit_number = (64 * (8 + 1 + 1) + 16) * 2 + additionalBits;
-  byte data_bits[bit_number / 8 + 1]; // jedes Bit wird in eine Bitmap einsortiert // every bit gets sorted into a bitmap
+  const int frame_byte_count = 64;
+  const int encoded_frame_bit_count = frame_byte_count * (8 + 1 + 1);
+  const int bit_number = (encoded_frame_bit_count + 16) * 2 + additionalBits;
+  byte data_bits[(bit_number + 7) / 8]; // jedes Bit wird in eine Bitmap einsortiert // every bit gets sorted into a bitmap
   int start_bit; // erstes Bit des Datenrahmens // first bit of data frame
   sensor_t sensor;
 
-  void start() {
-    if (prepare()) {
-      Dump::start();
-    }
+  boolean start() {
+    if (!prepare())
+      return false;
+
+    Dump::start();
+    return true;
   }
 
   boolean prepare() {
@@ -18,7 +22,7 @@ namespace Process {
       invert();
       start_bit = analyze();
     }
-    if (start_bit == -1)
+    if (start_bit == -1 || bit_number - start_bit < encoded_frame_bit_count)
       return false;
     trim();
     return check_device();
@@ -41,7 +45,7 @@ namespace Process {
   }
 
   void invert() {
-    int byte_count = bit_number / 8 + 1;
+    int byte_count = (bit_number + 7) / 8;
     for (int i = 0; i < byte_count; i++)
       data_bits[i] ^= 0xFF;
   }
@@ -62,7 +66,7 @@ namespace Process {
   }
 
   void trim() {
-    for (int i = start_bit, bit = 0, offset = 0; i < bit_number; i++, offset++) {
+    for (int i = start_bit, bit = 0, offset = 0; offset < encoded_frame_bit_count; i++, offset++) {
       if (offset % 10 && (offset + 1) % 10) {
         write_bit(bit, read_bit(i));
         bit++;
@@ -71,7 +75,14 @@ namespace Process {
   }
 
   boolean check_device() {
-    return data_bits[0] == 0x80 && data_bits[1] == 0x7f;
+    return data_bits[0] == 0x80 && data_bits[1] == 0x7f && check_checksum();
+  }
+
+  boolean check_checksum() {
+    byte checksum = 0;
+    for (int i = 0; i < frame_byte_count - 1; i++)
+      checksum += data_bits[i];
+    return checksum == data_bits[frame_byte_count - 1];
   }
 
   void fetch_sensor(int number) {
@@ -123,7 +134,7 @@ namespace Process {
         break;
       case ROOM:
         sensor.mode = (number & 0x600) >> 9;
-        value = ((number & 0x1ff) - 65536) * 0.1;
+        value = ((number & 0x1ff) - 0x200) * 0.1;
         break;
       default:
         sensor.invalid = true;

@@ -1,3 +1,8 @@
+#ifndef UVR2MQTT_PROCESS_H
+#define UVR2MQTT_PROCESS_H
+
+#include <Arduino.h>
+
 namespace Process {
 
   // ein Datenrahmen hat 64 Datenbytes + SYNC, also 64 * (8+1+1) + 16 = 656
@@ -7,6 +12,8 @@ namespace Process {
   // 656 * 2 = 1312 (twice as much as a data frame is saved
   // so there's one complete data frame
   extern const int bit_number;
+  extern const int frame_byte_count;
+  extern const int encoded_frame_bit_count;
   extern byte data_bits[]; // jedes Bit wird in eine Bitmap einsortiert // every bit gets sorted into a bitmap
   extern int start_bit; // erstes Bit des Datenrahmens // first bit of data frame
   
@@ -40,7 +47,7 @@ namespace Process {
 
   // Datenrahmen
   // data frame
-  void start(); // Datenrahmen auswerten
+  boolean start(); // Datenrahmen auswerten
   boolean prepare(); // Datenrahmen vorbereiten
   int analyze(); // Datenrahmen analysieren
   void invert(); // Datenrahmen invertieren
@@ -48,8 +55,11 @@ namespace Process {
   void write_bit(int pos, byte set); // Bitmap beschreiben // write to bitmap
   void trim(); // Datenrahmen in Bitmap schreiben // remove start and stop bits
   boolean check_device(); // Datenrahmen überprüfen // verify data frame
+  boolean check_checksum(); // Prüfsumme überprüfen // verify checksum
 
   // Informationen auslesen
   // readout information
   void fetch_sensor(int sensor); // Sensor
 }
+
+#endif

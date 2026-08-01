@@ -20,9 +20,11 @@ Install with https://esphome.github.io/esp-web-tools/ (for example)
 
 ## Automatic builds
 This repository includes a GitHub Actions workflow that builds the firmware automatically for:
+- pushes to `main`
+- pull requests
 - version tags like `v1.0.0`
 
-Build artifacts include the compiled `.bin` firmware for the **ESP8266**.
+Every build runs host-side DL bus frame and MQTT publishing tests, then compiles the `.bin` firmware for the **ESP8266**. Version tags also publish the firmware to a GitHub release.
 
 
 ## Resources: 

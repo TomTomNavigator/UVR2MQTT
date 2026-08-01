@@ -1,3 +1,6 @@
+#ifndef UVR2MQTT_MQTT_H
+#define UVR2MQTT_MQTT_H
+
 #include <WiFiClientSecure.h>
 #include "config.h"
 
@@ -10,15 +13,6 @@ static char lastPublishedSensorValue[7][10] = {{0}};
 static bool lastPublishedAusgang[7] = {false};
 static bool mqtt_publish_initialized = false;
 
-boolean mqtt_connect(void) {
-  // The new `manageConnections` function in the main .ino file ensures WiFi is
-  // connected before this is called. We just need to attempt the connection.
-  // The connect function is blocking, but will timeout after 15 seconds (as set in setup).
-  char clientId[20];
-  snprintf(clientId, sizeof(clientId), "UVR2MQTT-%06X", ESP.getChipId());
-  return mqtt_client->connect(clientId, config.mqtt_user, config.mqtt_pass);
-}
-
 void mqtt_reset_publish_cache() {
   for (int sv = 1; sv <= 6; sv++) {
     lastPublishedSensorValue[sv][0] = '\0';
@@ -27,7 +21,20 @@ void mqtt_reset_publish_cache() {
   mqtt_publish_initialized = false;
 }
 
-void mqtt_daten_senden(bool force_all = false) {
+boolean mqtt_connect(void) {
+  // The new `manageConnections` function in the main .ino file ensures WiFi is
+  // connected before this is called. We just need to attempt the connection.
+  // The connect function is blocking, but will timeout after 15 seconds (as set in setup).
+  char clientId[20];
+  snprintf(clientId, sizeof(clientId), "UVR2MQTT-%06X", ESP.getChipId());
+  boolean connected = mqtt_client->connect(clientId, config.mqtt_user, config.mqtt_pass);
+  if (connected) {
+    mqtt_reset_publish_cache();
+  }
+  return connected;
+}
+
+boolean mqtt_daten_senden(bool force_all = false) {
   // The main loop now ensures this is only called when the client is connected.
   char topic[160];
   bool publish_failed = false;
@@ -37,7 +44,7 @@ void mqtt_daten_senden(bool force_all = false) {
       continue;
     }
     snprintf(topic, sizeof(topic), "%sSensor%d", config.mqtt_topic, sv);
-    if (!mqtt_client->publish(topic, SensorValue[sv])) {
+    if (!mqtt_client->publish(topic, SensorValue[sv], true)) {
       publish_failed = true;
       break;
     }
@@ -50,7 +57,7 @@ void mqtt_daten_senden(bool force_all = false) {
         continue;
       }
       snprintf(topic, sizeof(topic), "%sAusgang%d", config.mqtt_topic, sv);
-      if (!mqtt_client->publish(topic, Ausgang[sv] ? "1" : "0")) {
+      if (!mqtt_client->publish(topic, Ausgang[sv] ? "1" : "0", true)) {
         publish_failed = true;
         break;
       }
@@ -61,7 +68,11 @@ void mqtt_daten_senden(bool force_all = false) {
   if (publish_failed) {
     mqtt_client->disconnect();
     mqtt_publish_initialized = false;
+    return false;
   } else {
     mqtt_publish_initialized = true;
+    return true;
   }
 }
+
+#endif
